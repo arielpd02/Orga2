@@ -21,6 +21,8 @@ four_of_a_kind_asm:
 
 	xor rax,rax 				; rax(=count):=0
 	mov rcx,rsi					; rcx:= n (cant. de manos)
+	shr rcx,2					; Divido por 4 / itero n/4 veces
+
 	movdqu xmm7,[shuffle_h1]	; Bajo la mascara de shift a xmm7
 	movdqu xmm6,[wipe_suit]		; Bajo la mascara de wipe-suit a xmm6
 	movdqu xmm5,[count_hands]	; Bajo la mascara de '1s' a xmm5
@@ -49,7 +51,7 @@ four_of_a_kind_asm:
 	movd r8d,xmm1 		; r8d:= res + # manos
 	add eax,r8d			; Acumulo la sol parcial en eax
 	
-	add rsi,16			; Actualizo el puntero de cartas
+	add rdi,16			; Actualizo el puntero de cartas
 
 	loop .ciclo
 

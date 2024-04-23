@@ -220,7 +220,7 @@ int main()
 
     printf("= Checkpoint 1\n");
     printf("==============\n");
-    //test_dot_product();
+    test_dot_product();
     printf("\n");
 
     printf("= Checkpoint 2\n");
