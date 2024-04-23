@@ -1,9 +1,9 @@
 ; En .rodata declaro las mascaras que voy a utilizar
 section .rodata: 	
-shuffle_h1: times 4 db 15 	;La mascara queda en posiciones contiguas de memoria
-shuffle_h2: times 4 db 11
-shuffle_h3: times 4 db 7
-shuffle_h4: times 4 db 3
+shuffle_h1: times 4 db 3 	;La mascara queda en posiciones contiguas de memoria
+shuffle_h2: times 4 db 7
+shuffle_h3: times 4 db 11
+shuffle_h4: times 4 db 15
 wipe_suit: times 16 db 15
 count_hands: times 16 db 0xff
 
@@ -20,7 +20,7 @@ four_of_a_kind_asm:
 	mov rbp,rsp					; Stack alineado a 16 bytes
 
 	xor rax,rax 				; rax(=count):=0
-	mov rcx,rsi					; rcx:= n (cant. de manos)
+	mov ecx,esi					; rcx:= n (cant. de manos)
 	shr rcx,2					; Divido por 4 / itero n/4 veces
 
 	movdqu xmm7,[shuffle_h1]	; Bajo la mascara de shift a xmm7
@@ -48,7 +48,7 @@ four_of_a_kind_asm:
 	phaddd xmm1,xmm1 	; xmm1:= ... | ... | ... | #manos
 
 	;Sumamos el resultado parcial a xmm4
-	movd r8d,xmm1 		; r8d:= res + # manos
+	movd r8d,xmm1 		; r8d:= # manos
 	add eax,r8d			; Acumulo la sol parcial en eax
 	
 	add rdi,16			; Actualizo el puntero de cartas
