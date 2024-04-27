@@ -7,7 +7,7 @@ global Pintar_asm
 ;              int src_row_size,		-> r8=src_row_size
 ;              int dst_row_size);		-> r9=dst_row_size
 
-;¡ Los pixeles se bajan a registro en sentido inverso !: xmmx:= A,B,G,R (3)| A,G,B,R (2) | A,G,B,R (1) | A,G,B,R (0)
+;¡ Los pixeles se bajan a registro en sentido inverso !: xmmx:= A,B,G,R (0)| A,G,B,R (1) | A,G,B,R (2) | A,G,B,R (3)
 ; Registros disponibles s/usar stack ; rax,r10,r11
 
 section .rodata:
