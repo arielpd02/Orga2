@@ -12,11 +12,11 @@ global Pintar_asm
 
 section .rodata:
 	black_paint: times 4 dd 0xff000000
-	white_paint: times 4 dd 0xff0000ff ;-> ahora pinta de rojo
+	white_paint: times 4 dd 0xffffffff 
 	black_paint_high: times 2 dd 0xff000000
 	black_paint_low: times 2 dd 0xffffffff
 
-	;Voy a cambiar que en vez de blanco pinte de rojo
+section .text
 
 Pintar_asm:
 	;Prologo
@@ -31,17 +31,21 @@ Pintar_asm:
 
 	
 	;Inicializo contadores y var de control de ciclo
+	mov r10, rcx	; r10:= height	
+	mov r11, rdx	; r11:= width
+
 	mov rax,rdx
 	shr rax,2		; width/4 -> #iteraciones para procesar una fila
 	mul rcx			; rax:= (width/4)*height
 	mov rcx,rax		; rcx:= # iteraciones del ciclo 
 	
-	mov rax,rdx
-	mul rcx
+	mov rax,r11
+	mul r10
 	mov r9,rax 		; r9:= #pixels
-	mov rax,rdx		; rax:= width
+	mov rax,r11
 	shl rax,1		; rax*=2 (#pixels en 2 filas)
 	sub r9,rax		; r9:= #pixels - #pixels en 2 filas
+
 
 	xor r11,r11		; r11  -> pixel counter
 
@@ -56,10 +60,11 @@ Pintar_asm:
 .ciclo:
 	;Filtramos segun fila en que estemos
 
-	cmp rax,r11			; #px_procesados ?= #px_en_2filas
-	jl .paint_black		; Si es menor , segui con negro
+	cmp r11,rax				; #px_procesados ?= #px_en_2filas
+	jl .paint_black			; Si es menor , segui con negro
+
 	cmp r11,r9			
-	jge .paint_black	; Si es igual o mayor , estamos en borde inferior 
+	jge .paint_black		; Si es igual o mayor , estamos en borde inferior 
 
 	; Caso contrario , filas intermedias -> blanco y negro
 .paint_white:
@@ -77,12 +82,12 @@ Pintar_asm:
 	jmp .end
 
 .border_l:
-	movdqu [rsi],xmm4	; Pinto 2px borde de negro , los otros 2 de blanco
+	movdqu [rsi],xmm3	; Pinto 2px borde de negro , los otros 2 de blanco
 	add r10,r8			; Actualizo un seed a la fila posterior , columna 0
 	jmp .end
 
 .border_r:
-	movdqu [rsi],xmm3 	; Pinto 2px de blanco , 2px borde de negro
+	movdqu [rsi],xmm4 	; Pinto 2px de blanco , 2px borde de negro
 	add rdx,r8			; Actualizo el seed a la fila posterior , columna m-3
 
 .end:
