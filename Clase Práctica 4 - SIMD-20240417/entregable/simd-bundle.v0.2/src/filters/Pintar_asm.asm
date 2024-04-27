@@ -8,7 +8,7 @@ global Pintar_asm
 ;              int src_row_size,		-> r8=src_row_size
 ;              int dst_row_size);		-> r9=dst_row_size
 
-; Los pixeles se bajan a registro en sentido inverso : xmmx:= A,B,G,R (3)| A,G,B,R (2) | A,G,B,R (1) | A,G,B,R (0)
+;¡ Los pixeles se bajan a registro en sentido inverso !: xmmx:= A,B,G,R (3)| A,G,B,R (2) | A,G,B,R (1) | A,G,B,R (0)
 ; Registros disponibles s/usar stack ; rax,r10,r11
 
 section .rodata:
@@ -77,11 +77,11 @@ Pintar_asm:
 	jmp .end
 
 .border_l:
-	movdqu [rsi],xmm3	; Pinto 2px borde de negro , los otros 2 de blanco
+	movdqu [rsi],xmm4	; Pinto 2px borde de negro , los otros 2 de blanco
 	add r10,r8			; Marco en r10 un seed a la fila posterior
 
 .border_r:
-	movdqu [rsi],xmm4 	; Pinto 2px de blanco , 2px borde de negro
+	movdqu [rsi],xmm3 	; Pinto 2px de blanco , 2px borde de negro
 	add rdx,r8			; Actualizo el seed a la fila posterior
 
 .end:
