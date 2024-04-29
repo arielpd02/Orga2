@@ -1,7 +1,5 @@
 global temperature_asm
 
-; Los pixeles se representan en memoria/registros como : 00000000 A R G B (1) | 00000000 A R G B (0)  
-
 %define reconstruct 0x10100000
 
 section .rodata:
@@ -14,23 +12,23 @@ section .rodata:
 
     ; Defino mascaras para aplicar sobre t1|...|t0 acumulativamente
     lt_32_mul: times 2 dw 4,0,0,0
-    lt_32_sum: times 2 dw 128,0,0,0
+    lt_32_sum: times 2 dw 128,0,0,255
 
-    btw_32_&_96_dif: times 2 dw 0,32,0,0
-    btw_32_&_96_mul: times 2 dw 0,4,0,0
-    btw_32_&_96_sum: times 2 dw 255,0,0,0
+    btw_32_96_dif: times 2 dw 0,32,0,0
+    btw_32_96_mul: times 2 dw 0,4,0,0
+    btw_32_96_sum: times 2 dw 255,0,0,255
 
-    btw_96_&_160_dif: times 2 dw 96,0,96,0
-    btw_96_&_160_mul: times 2 dw -4,0,4,0
-    btw_96_&_160_sum: times 2 dw 255,255,0,0
+    btw_96_160_dif: times 2 dw 96,0,96,0
+    btw_96_160_mul: times 2 dw -4,0,4,0
+    btw_96_160_sum: times 2 dw 255,255,0,255
 
-    btw_160_&_224_dif: times 2 dw 0,160,0,0
-    btw_160_&_224_mul:  times 2 dw 0,-4,0,0
-    btw_160_&_224_sum:  times 2 dw 0,255,255,0
+    btw_160_224_dif: times 2 dw 0,160,0,0
+    btw_160_224_mul: times 2 dw 0,-4,0,0
+    btw_160_224_sum: times 2 dw 0,255,255,255
 
     geqt_224_dif: times 2 dw 0,0,224,0
     geqt_224_mul: times 2 dw 0,0,-4,0
-    geqt_224_sum: times 2 dw 0,0,255,0
+    geqt_224_sum: times 2 dw 0,0,255,255
 
 
    
@@ -54,7 +52,6 @@ temperature_asm:
 
     ;Bajo mascaras a registros
     movdqu xmm6,[div_constant]      ; Bajo a registro el valor 3 para la division
- 
     movdqu xmm12,[t_32]             
     movdqu xmm13,[t_96]             
     movdqu xmm14,[t_160]            
@@ -73,13 +70,17 @@ temperature_asm:
     pmovzxbw xmm0,[rsi]     ; Bajo 2px a reg extendidos con zero como qw-packed data (C/componente ocupa 1 word)
     movdqu xmm1,xmm0        ; Copio en xmm1  
 
-    ; calc_t toma como parametro al xmm0 := A B G R (1) | A B G R (0)
+    ; calc_t toma como parametro al xmm0 := A R G B (1) | A R G B (0)
     call calc_t
     ; Devuelve xmm0:= | t1 | t1 | t1 | t1 | t0 | t0 | t0 | t0 
+    ; Trabajo cada ti como si fuera una componente propia del pixel i / al final tengo los pixeles ya procesados
+    ; Voy a ir acumulando resultados , pisando si ti no cumple cierta condicion 
 
     call pintar
+    ; xmm0 = FF | dst_r(1) | dst_g(1) | dst_b(1) | FF | dst_r(0) | dst_g(0) | dst_b(0)
 
-
+    packuswb xmm0,xmm0  ; Compacto los words en bytes ->  dst<px1> | dst<px0> | dst<px1> | dst<px0>
+    movd [rsi],xmm0
 
     add rsi,8       ; Actualizo el puntero a los proximos 2 px
     loop .ciclo
@@ -96,6 +97,9 @@ pintar:
     push rbp
     mov rbp,rsp
 
+    ; Mi resultado final lo construyo en xmm11
+    pxor xmm11,xmm1
+
     ;Copio el valor original de t0 y t1
     movdqu xmm5,xmm0
 
@@ -103,27 +107,134 @@ pintar:
     movdqu xmm2,xmm0
     pcmpgtw xmm2,xmm12              ; Si habia 1s, alguno es mayor , voy a la proxima "guarda"
     pxor xmm2,[all_ones]            ; XOR me wipea 1s -> luego testeo con PTEST
-    ptest xmm2,xmm2                 ; Setea el ZF en 0 si todos 0s al hacer un AND
-    jz .between_96_&_32             ; IF eran 0s -> ninguno cumplia ser menor y sigo
+    ptest xmm2,xmm2                 ; Setea el ZF en 1 si xmmx==0 al hacer un AND / dst remains unchanged
+    jz .between_96_32               ; IF eran 0s -> ninguno cumplia ser menor y sigo
+
+    movdqu xmm7,xmm2                ; Guardo la mask obtenida para luego comparar "cual px cumple"
 
     movdqu xmm1,[lt_32_mul]         ; X convencion de llamada
+    call multiplicar                ; Multiplico componentes debidas , res en xmm0
+    paddw xmm0,[lt_32_sum]          ; Sumo en componentes debidas
+
+    pand xmm0,xmm7                  ; El AND me preserva el calculo sii el t_px cumplia
+    por xmm11,xmm0                  ; Cargo el res parcial en xmm11
+
+.between_96_32:
+    movdqu xmm0,xmm5
+    movdqu xmm1,xmm12   
+    movdqu xmm2,xmm13               ; X convencion
+
+    call between
+    ; Chequeo si ninguno cumple
+    movdqu xmm2,xmm0
+    ptest xmm2,xmm2
+    jz .between_96_160              ; Si era todo 0 , ninguno cumple, voy a guarda siguiente
+
+    movdqu xmm7,xmm2                ; Guardo mask
+    movdqu xmm0,xmm5                ; Devuelvo t original
+
+    ; Resto a t -> multiplico -> sumo
+    psubw xmm0,[btw_96_160_dif]
+    movdqu xmm1,[btw_96_160_mul]
     call multiplicar
+    paddw xmm0,[btw_96_160_sum]
+
+    pand xmm0,xmm7
+    por xmm11,xmm0
+
+
+.between_96_160:
+    movdqu xmm0,xmm5
+    movdqu xmm1,xmm13
+    movdqu xmm2,xmm14
+
+    call between
+    ;Chequeo si ninguno cumple
+    movdqu xmm2,xmm0
+    ptest xmm2,xmm2
+    jz .between_160_224
+
+    movdqu xmm7,xmm2                ; Guardo mask
+    movdqu xmm0,xmm5                ; Devuelvo t original
+
+    ; Resto a t -> multiplico -> sumo
+    psubw xmm0,[btw_96_160_dif]
+    movdqu xmm1,[btw_160_224_mul]
+    call multiplicar
+    paddw xmm0,[btw_96_160_sum]
+
+    pand xmm0,xmm7
+    por xmm11,xmm0
+
+.between_160_224:
+    movdqu xmm0,xmm5
+    movdqu xmm1,xmm14
+    movdqu xmm2,xmm15
+
+    call between
+    ;Chequeo si ninguno cumple
+    movdqu xmm2,xmm0
+    ptest xmm2,xmm2
+    jz .greaterthan_224
+
+    movdqu xmm7,xmm2                ; Guardo mask
+    movdqu xmm0,xmm5                ; Restauro t
+
+    ; Resto a t -> multiplico -> sumo
+    psubw xmm0,[btw_160_224_dif]
+    movdqu xmm1,[btw_160_224_mul]
+    call multiplicar
+    paddw xmm0,[btw_160_224_sum]
+
+    pand xmm0,xmm7
+    por xmm11,xmm0
+
+.greaterthan_224:
+    movdqu xmm0,xmm5
+    ;Chequeo si ninguno cumple
+    pcmpgtw xmm0,xmm15              ; t>223?
+    ptest xmm0,xmm0
+    jz .end             
+
+    movdqu xmm7,xmm0                ; Guardo mask
+    movdqu xmm0 ,xmm5               ; Restauro t
+
+    ;Resto a t -> multiplico -> sumo
+    psubw xmm0,[geqt_224_dif]
+    movdqu xmm1,[geqt_224_mul]
+    call multiplicar
+    paddw xmm0,[geqt_224_sum]
+
+    pand xmm0,xmm7
+    por xmm11,xmm0
+
+.end:
+    movdqu xmm0,xmm11
+    ;Epilogo
+    pop rbp
+    ret
 
 
 
+; xmm0= t1|t1|...|t0|t0 
+; xmm1: lower_mask
+; xmm2: upper_mask
+between:
+    ;Prologo 
+    push rbp
+    mov rbp,rsp
 
+    movdqu xmm7,xmm0
+    pcmpgtw xmm0,xmm1   ; t>lower?
+    pcmpgtw xmm7,xmm2   ; t>upper?
 
-.between_96_&_32:
-
-
-
-
-
-
+    pandn xmm7,xmm0     ; t>lower && t<=upper?
+    movdqu xmm0,xmm7
 
     ;Epilogo
     pop rbp
     ret
+
 
 
 
