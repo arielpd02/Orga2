@@ -7,7 +7,7 @@ global Pintar_asm
 ;              int src_row_size,		-> r8=src_row_size
 ;              int dst_row_size);		-> r9=dst_row_size
 
-;¡ Los pixeles se bajan a registro en sentido inverso !: xmmx:= A,B,G,R (0)| A,G,B,R (1) | A,G,B,R (2) | A,G,B,R (3)
+;¡ Los pixeles se bajan a registro en sentido inverso !: xmmx:= A,B,G,R (3)| A,G,B,R (2) | A,G,B,R (1) | A,G,B,R (0)
 ; Registros disponibles s/usar stack ; rax,r10,r11
 
 section .rodata:
@@ -26,8 +26,8 @@ Pintar_asm:
 	;Bajo mascaras
 	movdqu xmm1,[black_paint]			; xmm1:= ff000000 | ... | ff000000
 	movdqu xmm2,[white_paint]			; xmm2:= ffffffff | ... | ffffffff
-	movdqu xmm3,[black_paint_high]		; xmm3:= ff000000 | ff000000 | ffffffff | ffffffff
-	movdqu xmm4,[white_paint+8]			; xmm4:= ffffffff | ffffffff | ff000000 | ff000000 x contiguidad de memoria
+	movdqu xmm3,[black_paint_high]		; xmm3:= ffffffff | ffffffff | ff000000 | ff000000 
+	movdqu xmm4,[white_paint+8]			; xmm4:= ff000000 | ff000000 | ffffffff | ffffffff x contiguidad de memoria
 
 	
 	;Inicializo contadores y var de control de ciclo
