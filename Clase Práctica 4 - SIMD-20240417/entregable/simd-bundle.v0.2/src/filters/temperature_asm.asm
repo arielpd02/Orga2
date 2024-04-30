@@ -1,6 +1,5 @@
 global temperature_asm
 
-%define reconstruct 0x10100000
 
 section .rodata:
     all_ones: times 16 db 0xff
@@ -51,6 +50,7 @@ temperature_asm:
     mov rbp,rsp     ; Stack alineada 
 
     ;Bajo mascaras a registros
+    movdqu xmm4,[all_ones]
     movdqu xmm6,[div_constant]      ; Bajo a registro el valor 3 para la division
     movdqu xmm12,[t_32]             
     movdqu xmm13,[t_96]             
@@ -106,7 +106,7 @@ pintar:
 .lessthan_32:
     movdqu xmm2,xmm0
     pcmpgtw xmm2,xmm12              ; Si habia 1s, alguno es mayor , voy a la proxima "guarda"
-    pxor xmm2,[all_ones]            ; XOR me wipea 1s -> luego testeo con PTEST
+    pxor xmm2,xmm4                  ; XOR me wipea 1s -> luego testeo con PTEST
     ptest xmm2,xmm2                 ; Setea el ZF en 1 si xmmx==0 al hacer un AND / dst remains unchanged
     jz .between_96_32               ; IF eran 0s -> ninguno cumplia ser menor y sigo
 
@@ -114,7 +114,8 @@ pintar:
 
     movdqu xmm1,[lt_32_mul]         ; X convencion de llamada
     call multiplicar                ; Multiplico componentes debidas , res en xmm0
-    paddw xmm0,[lt_32_sum]          ; Sumo en componentes debidas
+    movdqu xmm2,[lt_32_sum]
+    paddw xmm0,xmm2                 ; Sumo en componentes debidas
 
     pand xmm0,xmm7                  ; El AND me preserva el calculo sii el t_px cumplia
     por xmm11,xmm0                  ; Cargo el res parcial en xmm11
@@ -134,9 +135,11 @@ pintar:
     movdqu xmm0,xmm5                ; Devuelvo t original
 
     ; Resto a t -> multiplico -> sumo
-    psubw xmm0,[btw_96_160_dif]
+    movdqu xmm2,[btw_96_160_dif]
+    psubw xmm0,xmm2
     movdqu xmm1,[btw_96_160_mul]
     call multiplicar
+    movdqu xmm2,[btw_96_160_sum]
     paddw xmm0,[btw_96_160_sum]
 
     pand xmm0,xmm7
@@ -158,10 +161,12 @@ pintar:
     movdqu xmm0,xmm5                ; Devuelvo t original
 
     ; Resto a t -> multiplico -> sumo
-    psubw xmm0,[btw_96_160_dif]
+    movdqu xmm2,[btw_160_224_dif]
+    psubw xmm0,xmm2
     movdqu xmm1,[btw_160_224_mul]
     call multiplicar
-    paddw xmm0,[btw_96_160_sum]
+    movdqu xmm2,[btw_96_160_sum]
+    paddw xmm0,xmm2
 
     pand xmm0,xmm7
     por xmm11,xmm0
@@ -181,10 +186,12 @@ pintar:
     movdqu xmm0,xmm5                ; Restauro t
 
     ; Resto a t -> multiplico -> sumo
-    psubw xmm0,[btw_160_224_dif]
+    movdqu xmm2,[btw_160_224_dif]
+    psubw xmm0,xmm2
     movdqu xmm1,[btw_160_224_mul]
     call multiplicar
-    paddw xmm0,[btw_160_224_sum]
+    movdqu xmm2,[btw_160_224_sum]
+    paddw xmm0,xmm2
 
     pand xmm0,xmm7
     por xmm11,xmm0
@@ -197,12 +204,14 @@ pintar:
     jz .end             
 
     movdqu xmm7,xmm0                ; Guardo mask
-    movdqu xmm0 ,xmm5               ; Restauro t
+    movdqu xmm0,xmm5               ; Restauro t
 
     ;Resto a t -> multiplico -> sumo
-    psubw xmm0,[geqt_224_dif]
+    movdqu xmm2,[geqt_224_dif]
+    psubw xmm0,xmm2
     movdqu xmm1,[geqt_224_mul]
     call multiplicar
+    movdqu xmm2,[geqt_224_sum]
     paddw xmm0,[geqt_224_sum]
 
     pand xmm0,xmm7
@@ -228,7 +237,7 @@ between:
     pcmpgtw xmm0,xmm1   ; t>lower?
     pcmpgtw xmm7,xmm2   ; t>upper?
 
-    pandn xmm7,xmm0     ; t>lower && t<=upper?
+    pandn xmm7,xmm0     ; t>lower && t<=upper-1?
     movdqu xmm0,xmm7
 
     ;Epilogo
@@ -269,49 +278,34 @@ calc_t:     ;Funca!!
     pxor xmm3,xmm3
     pxor xmm7,xmm7
     pxor xmm2,xmm2
-    cvtdq2ps xmm6,xmm6      ; Convierto el divisor en float
+    cvtpi2ps xmm6,mm6      ; Convierto el divisor en float
 
-    ; Muevo a otros registros para poder hacer el horizontal add, extraigo A para restar
-    pextrq rax,xmm0,0
-    pinsrq xmm2,rax,0       ; xmm2:= 0000 | A R G B (0)
-    pextrw r10,xmm2,3       ; r10:= A(0)
-    pextrq rax,xmm0,1
-    pinsrq xmm3,rax,0       ; xmm3:= 0000 | A R G B (0)
-    pextrw r11,xmm3,3       ; r11:= A(1)
+    ; Borramos A de c/pixel
+    xor rax,rax
+    pinsrw xmm0,rax,3
+    pinsrw xmm0,rax,7
 
+    ; Suma horizontal
+    phaddw xmm0,xmm0
+    phaddw xmm0,xmm0        ; xmm0:= ... | ... | ... | (R+G+B) PX1 | (R+G+B) PX0
 
-    ; Sumamos las componentes de c/pixel
-    phaddw xmm2,xmm2
-    phaddw xmm2,xmm2
-    phaddw xmm3,xmm3
-    phaddw xmm3,xmm3
-
-    ;Restamos el valor de A correspondiente
-    pinsrw xmm7,r10,0       ; Bajo a xmm7 pixel_0->A
-    pshuflw xmm7,xmm7,0     ; xmm7:= ... |  A A A A (0)
-    psubw xmm2,xmm7         ; xmm2:= ...|(R+G+B)(R+G+B)(R+G+B)(R+G+B) pixel_0 
-    
-    pinsrw xmm7,r11,0       ; Bajo a xmm7 pixel_1->A
-    pshuflw xmm7,xmm7,0     ; xmm7:= ... |  A A A A (1)
-    psubw xmm3,xmm7         ; xmm3:= ...|(R+G+B)(R+G+B)(R+G+B)(R+G+B) pixel_1
-
-    ;Junto todo en xmm0
-    pextrq rax,xmm2,0
-    pinsrq xmm0,rax,0
-    pextrq rax,xmm3,0
-    pinsrq xmm0,rax,1       ; xmm0:= (R+G+B)(R+G+B)(R+G+B)(R+G+B) pixel_1 | (R+G+B)(R+G+B)(R+G+B)(R+G+B) pixel_0
+    ;Junto todo en xmm0 , extendiendo las sumas a DW
+    pmovzxwd xmm0,xmm0
 
     ;Falta dividir por 3 -> tengo que convertir a float , dividir y luego truncar... Solo puedo operar con dwords
-    pslld xmm0,16           ; xmm0:= 00000000 (R+G+B)(1)| 00000000 (R+G+B) (1)| 00000000 (R+G+B)(0) | 00000000 (R+G+B)(0) 
-    psrld xmm0,16            ; Borro la 'basura' acumulada por los adds y subs
-    cvtdq2ps xmm0,xmm0      ; Los convierto en Sp floats
-    divps xmm0,xmm6
-    cvttps2dq xmm0,xmm0     ; xmm0:= 00000000 (R+G+B)/3 (1)| 00000000 (R+G+B)/3 (1)| 00000000 (R+G+B)/3 (0) | 00000000 (R+G+B)/3 (0) 
+    cvtpi2ps xmm0,mm0      ; Los convierto en Sp floats
+    divps xmm0,xmm6         ; Divido c/suma
+    cvttps2pi mm0,xmm0     ; Trunco el resultado
+    ; xmm0:= ? | ? | sum1/3 | sum0/3
 
     ;Reconstruyo las words
-    pshuflw xmm0,xmm0,reconstruct
-    pshufhw xmm0,xmm0,reconstruct   ;xmm0:= t1 | t1 | t1 | t1 | t0 | t0 | t0 | t0 
-
+    movdqu xmm7,xmm0
+    psllq xmm7,64           ; xmm7:= sum1/3 | sum0/3 | ? | ? 
+    packusdw xmm0,xmm7      ; xmm0:=  t1 | t0 | ? | ? | ? | ? | t1 | t0
+    movdqu xmm7,xmm0
+    pshufhw xmm0,xmm7,0b11111111
+    movdqu xmm7,xmm0
+    pshuflw xmm0,xmm7,0b00000000
 
     ;Epilogo
     pop rbp
