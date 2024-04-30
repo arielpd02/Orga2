@@ -2,6 +2,11 @@ global temperature_asm
 
 
 section .rodata:
+    a_mask: dw 0xffff, 0xffff, 0xffff, 0x0000, 0xffff, 0xffff, 0xffff, 0x0000
+    c_mask: dw 0xffff, 0x0000, 0xffff, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000
+    divisor: dd 3, 3
+
+
     all_ones: times 16 db 0xff
     div_constant: times 4 dd 3
     t_32: times 8 dw 31
@@ -67,7 +72,7 @@ temperature_asm:
 
 .ciclo:
 
-    pmovzxbw xmm0,[rsi]     ; Bajo 2px a reg extendidos con zero como qw-packed data (C/componente ocupa 1 word)
+    pmovzxbw xmm0,[rdi]     ; Bajo 2px a reg extendidos con zero como qw-packed data (C/componente ocupa 1 word)
     movdqu xmm1,xmm0        ; Copio en xmm1  
 
     ; calc_t toma como parametro al xmm0 := A R G B (1) | A R G B (0)
@@ -83,6 +88,7 @@ temperature_asm:
     movd [rsi],xmm0
 
     add rsi,8       ; Actualizo el puntero a los proximos 2 px
+    add rdi,8       ; Tambien hay q actualizar el de la imagen original :)
     loop .ciclo
 
     ;Epilogo
@@ -269,12 +275,40 @@ multiplicar:
     ;Epilogo
     pop rbp
     ret
+calc_t_aux:
+    push rbp
+    mov rbp, rsp
+    movdqu xmm2,[divisor]
+    cvtpi2pd xmm2,mm2
+
+    ; Sum in 16 bits because 255 * 3 wouldn't fit in 8 bits
+    movdqu xmm7,[a_mask]
+    pand xmm0, xmm7
+    phaddw xmm0, xmm0
+    phaddw xmm0, xmm0
+    punpcklwd xmm0, xmm0
+    movdqu xmm7,[c_mask]
+    pand xmm0, xmm7    ; | t1 | 0 | t2 | 0 | 0 | 0 | 0 | 0 |
+
+    cvtdq2pd xmm0, xmm0    ; Convert dword ints to double
+    divpd xmm0, xmm2       ; Packed double division
+    cvttpd2dq xmm0, xmm0   ; Convert packed doubles to dword ints with truncation
+    punpcklwd xmm0, xmm0   ; Broadcast result
+    movdqu xmm2, xmm0
+    psllq xmm2, 32
+    por xmm0, xmm2
+
+    ; We are returning:
+    ; xmm0 = | t1 | t1 | t1 | t1 | t2 | t2 | t2 | t2 |
+    pop rbp
+    ret
 
 ; uint_16 calc_t(pixel_t *src1 , pixel_t *src2) xmm0:= A R G B (1) | A R G B (0) 
 calc_t:     ;Funca!!
     ;Prologo
     push rbp
     mov rbp,rsp             ; Stack alineada
+
     pxor xmm3,xmm3
     pxor xmm7,xmm7
     pxor xmm2,xmm2
@@ -295,7 +329,7 @@ calc_t:     ;Funca!!
     ;Falta dividir por 3 -> tengo que convertir a float , dividir y luego truncar... Solo puedo operar con dwords
     cvtpi2ps xmm0,mm0      ; Los convierto en Sp floats
     divps xmm0,xmm6         ; Divido c/suma
-    cvttps2pi mm0,xmm0     ; Trunco el resultado
+    cvttps2dq xmm0,xmm0     ; Trunco el resultado -> TODO
     ; xmm0:= ? | ? | sum1/3 | sum0/3
 
     ;Reconstruyo las words
