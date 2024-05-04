@@ -16,6 +16,7 @@ section .rodata:
 	black_paint_high: times 2 dd 0xff000000
 	black_paint_low: times 2 dd 0xffffffff
 
+section .text
 
 Pintar_asm:
 	;Prologo
