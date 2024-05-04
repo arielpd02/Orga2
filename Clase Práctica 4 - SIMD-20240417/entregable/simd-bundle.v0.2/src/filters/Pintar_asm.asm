@@ -12,11 +12,10 @@ global Pintar_asm
 
 section .rodata:
 	black_paint: times 4 dd 0xff000000
-	white_paint: times 4 dd 0xff0000ff ;-> ahora pinta de rojo
+	white_paint: times 4 dd 0xffffffff 
 	black_paint_high: times 2 dd 0xff000000
 	black_paint_low: times 2 dd 0xffffffff
 
-	;Voy a cambiar que en vez de blanco pinte de rojo
 
 Pintar_asm:
 	;Prologo
