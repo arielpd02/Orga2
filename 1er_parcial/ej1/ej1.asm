@@ -92,7 +92,7 @@ inicializar_OT_asm:
     ret
 
 ; void* calcular_z(nodo_display_list_t* display_list,uint8_t z_size);
-;                           RDI ptr a la lista          RSI z_size
+;                           RDI ptr a un nodo_display_t          RSI z_size
 calcular_z_asm:
     ;Prologo
     push rbp
@@ -142,7 +142,6 @@ calcular_z_asm:
 ; void* ordenar_display_list(ordering_table_t* ot, nodo_display_list_t* display_list) ;
 ;                               RDI tiene ptr de OT 
 ;                               RSI tiene ptr a display_list
-;                               RDX  tiene z_size
 ordenar_display_list_asm:
     ;Prologo
     push rbp
@@ -156,25 +155,42 @@ ordenar_display_list_asm:
     xor r15,r15
     xor r13,r13
 
-    mov r15,rdi     ; r15 tiene ptr de OT
-    mov r14,rsi     ; r14 tiene ptr a nodo de display_list --no estatico
-    mov r13b,dl     ; r13 tiene z_size
+    mov r15,rdi                            ; r15 tiene ptr de OT
+    mov r14,rsi                            ; r14 tiene ptr a nodo de display_list --no estatico
+    mov r13b,byte [r15+OFF_TABLE_SIZE]     ; r13 tiene z_size
 
     ; Iteramos por display_list_t, x cada nodo lo agrego a un node_OT en su index correspondiente
     .ciclo_display_list:
 
         ;Calculamos el z del nodo actual
         xor rsi,rsi
-        mov rdi,r15
+        mov rdi,r14
         mov sil,r13b
         call calcular_z_asm
 
-        mov r13b,byte[r15+OFF_NODE_Z]       ; r13 tiene valor z de nodo actual
+        xor r8,r8
+        mov r8b,byte[r14+OFF_NODE_Z]           ; r8 tiene valor z de nodo actual
+        mov r12,[r15+OFF_TABLE]
+        mov r12,[r12+(r8*8)]                   ; r12 tiene ptr a nodo_ot de Z,inicio del array
+
+
+        ;Pedimos memoria para el nuevo nodo_ot y asociamos a nodo_display_t
+        mov rdi,SIZE_OF_OT
+        push r8
+        sub rsp,8
+
+        call malloc         ; rax tengo ptr al  nuevo nodo_ot
+        add rsp,8
+        pop r8
+
+        mov [rax+OFF_OT_NODE_DISPLAY_ELEMENT],r14
+        mov qword [rax+OFF_OT_NODE_SIGUIENTE],NULL
+
+
 
         ; Chequeamos si es lista vacia
-        mov r12,[r15+r13]                  ; r12 tiene ptr a nodo_ot de z
         cmp r12,NULL
-        je .agregar_nodo
+        je .agregar_nodo_if_null
 
         ;CC hay que buscar el final
 
@@ -186,18 +202,16 @@ ordenar_display_list_asm:
             cmp r12,NULL
             jne .ciclo_arr_ot
 
-        mov r12,rcx         ; Recupero el ultimo nodo
+        mov r12,rcx                             ; Recupero el ultimo nodo
+        mov [r12+OFF_OT_NODE_SIGUIENTE],rax     ; Asocio al nuevo ultimo nodo
+        jmp .avanzar
 
+        .agregar_nodo_if_null
 
-        .agregar_nodo:
-        ;Pedimos memoria para el nuevo nodo_ot y asociamos a nodo_display_t
+            mov r9,[r15+OFF_TABLE]  
+            mov [r9+(r8*8)],rax  ;Para acceder a table[z], tengo que acceder a table y luego desplazarme z*8 bytes
 
-        mov rdi,SIZE_OF_OT
-        call malloc         ; rax tengo ptr al  nuevo nodo_ot
-        mov [rax+OFF_OT_NODE_DISPLAY_ELEMENT],r14
-        mov qword [rax+OFF_OT_NODE_SIGUIENTE],NULL
-
-
+        .avanzar:
 
         mov r14,[r14+OFF_NODE_SIGUIENTE]    ; Avanzo al proximo nodo
         cmp r14,NULL            
@@ -212,4 +226,5 @@ ordenar_display_list_asm:
     pop r15
     pop rbp
     ret
+
 
