@@ -4,19 +4,26 @@
 ; ==============================================================================
 
 %include "print.mac"
-%define C_FG_LIGHT_CYAN  (0xB)
+%define C_FG_LIGHT_CYAN  0xb
+%define C_FG_LIGHT_GREEN  0xa
 
 global start
 
 
 ; COMPLETAR - Agreguen declaraciones extern según vayan necesitando
+
+;Extern code
 extern A20_enable
 extern A20_disable
+
+;Extern data
 extern GDT_DESC
 
 ; COMPLETAR - Definan correctamente estas constantes cuando las necesiten
-;%define CS_RING_0_SEL ??   
-;%define DS_RING_0_SEL ??   
+%define CS_RING_0_SEL  0x1000     
+%define DS_RING_0_SEL  0x3000       
+
+%define STACK_BASE 0x25000
 
 
 BITS 16
@@ -57,26 +64,39 @@ start:
     ; COMPLETAR - Habilitar A20
     ; (revisar las funciones definidas en a20.asm)
     call A20_enable
+    call A20_check
 
     ; COMPLETAR - Cargar la GDT
     lgdt [GDT_DESC]
 
     ; COMPLETAR - Setear el bit PE del registro CR0
+    mov eax,cr0
+    or eax,1
+    mov cr0,eax
 
     ; COMPLETAR - Saltar a modo protegido (far jump)
     ; (recuerden que un far jmp se especifica como jmp CS_selector:address)
     ; Pueden usar la constante CS_RING_0_SEL definida en este archivo
+    jmp CS_RING_0_SEL:modo_protegido
 
 BITS 32
 modo_protegido:
     ; COMPLETAR - A partir de aca, todo el codigo se va a ejectutar en modo protegido
     ; Establecer selectores de segmentos DS, ES, GS, FS y SS en el segmento de datos de nivel 0
     ; Pueden usar la constante DS_RING_0_SEL definida en este archivo
+    mov ax,DS_RING_0_SEL
+    mov ds,ax
+    mov es,ax
+    mov gs,ax
+    mov fs,ax
+    mov ss,ax
 
     ; COMPLETAR - Establecer el tope y la base de la pila
+    mov ebp,STACK_BASE
+    mov esp,STACK_BASE
 
     ; COMPLETAR - Imprimir mensaje de bienvenida - MODO PROTEGIDO
-
+    print_text_pm start_pm_msg,start_pm_len,C_FG_LIGHT_GREEN,0,0
     ; COMPLETAR - Inicializar pantalla
     
    

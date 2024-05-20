@@ -23,3 +23,9 @@
 
 10. *La instruccion LGDT carga el operando src de 48bits/6bytes en el registro de la GDT, el cual especifica el base address de esta en los 4 bytes mas altos y su limite (#bytes que ocupa la tabla) en los 2 mas bajos.
     *Esta informacion esta en gdt_descriptor_t ; la cual se inicializa en gdt.c con el nombre GDT_DESC.
+
+
+13. Si , debemos setear la PE (ProtectEnable) flag en 1 para habilitar el pasaje a modo protegido; el bit 0 de CR0.
+
+15. *El formato adecuado para el jump far es <Segment>+<Absolute Address> ; se pasa a un segmento de codigo del mismo nivel de privilegio que el actual.
+    *Como selector de segmento uso una macro con el indice desplazado, bit TIL:=0 y RPL:=00.

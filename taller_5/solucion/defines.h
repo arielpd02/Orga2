@@ -41,9 +41,9 @@
  * Hint: usar operadores "<<" y "|" (shift y or) */
 
 #define GDT_CODE_0_SEL (GDT_IDX_CODE_0<<3)|000
-#define GDT_DATA_0_SEL (GDT_IDX_CODE_3<<3)|000
+#define GDT_DATA_0_SEL (GDT_IDX_CODE_3<<3)|011
 #define GDT_CODE_3_SEL (GDT_IDX_DATA_0<<3)|000
-#define GDT_DATA_3_SEL (GDT_IDX_DATA_3<<3)|000
+#define GDT_DATA_3_SEL (GDT_IDX_DATA_3<<3)|011
 
 
 // Macros para trabajar con segmentos de la GDT.
@@ -63,11 +63,11 @@
 /* COMPLETAR - Valores de atributos */ 
 #define DESC_CODE_DATA 1
 #define DESC_SYSTEM    0
-#define DESC_TYPE_EXECUTE_READ 10
-#define DESC_TYPE_READ_WRITE   2
+#define DESC_TYPE_EXECUTE_READ 0xa
+#define DESC_TYPE_READ_WRITE   0x2
 
-#define MAX_PRIVILEGE 0
-#define MIN_PRIVILEGE 3
+#define MAX_PRIVILEGE 0x00
+#define MIN_PRIVILEGE 0x03
 
 /* COMPLETAR - Tamaños de segmentos */ 
 #define FLAT_SEGM_SIZE   0x33001 // 817 MiB
