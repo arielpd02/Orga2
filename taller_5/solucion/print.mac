@@ -95,7 +95,7 @@
 ;;      * TODOS los parámetros son de 16 BITS.
 ;;
 %macro print_text_rm 5
-    pusha
+    pusha               ; Pushea todos los registros en cierto orden
 
     push es
 
@@ -139,7 +139,7 @@
 
     pop es
 
-    popa
+    popa                  ; Popea todos los registros en cierto orden
 %endmacro
 
 %endif  ;; !__PRINT_MAC__ ;;

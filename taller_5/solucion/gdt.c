@@ -16,7 +16,7 @@ gdt_entry_t gdt[GDT_COUNT] = {
     /* Offset = 0x00 */
     [GDT_IDX_NULL_DESC] =
         {
-            // El descriptor nulo es el primero que debemos definir siempre
+            // El descriptor nulo es el primero que debemos definir siempre.Este nunca se usa.
             // Cada campo del struct se matchea con el formato que figura en el manual de intel
             // Es una entrada en la GDT.
             .limit_15_0 = 0x0000,
@@ -40,9 +40,72 @@ gdt_entry_t gdt[GDT_COUNT] = {
       macros allí definidas.
       Tomen el descriptor nulo como ejemplo y definan el resto.
      */
-    
+    [GDT_IDX_CODE_0]=
+        {   // Para direccionar 817Mib , el offset maximo es 0x33000
+            .limit_15_0 = 0x3000,
+            .base_15_0 = 0x0000,
+            .base_23_16 = 0x00,
+            .type = DESC_TYPE_EXECUTE_READ,
+            .s = DESC_CODE_DATA,
+            .dpl = MAX_PRIVILEGE,
+            .p = 0x00,
+            .limit_19_16 = 0x3,
+            .avl = 0x1,
+            .l = 0x0,
+            .db = 0x1,
+            .g = 0x1,
+            .base_31_24 = 0x00,
+        },
+    [GDT_IDX_CODE_3]=
+        {
+            .limit_15_0 = 0x3000,
+            .base_15_0 = 0x0000,
+            .base_23_16 = 0x00,
+            .type = DESC_TYPE_EXECUTE_READ,
+            .s = DESC_CODE_DATA,
+            .dpl = MIN_PRIVILEGE,
+            .p = 0x00,
+            .limit_19_16 = 0x3,
+            .avl = 0x1,
+            .l = 0x0,
+            .db = 0x1,
+            .g = 0x1,
+            .base_31_24 = 0x00,
+        },
+    [GDT_IDX_DATA_0]=
+        {
+            .limit_15_0 = 0x3000,
+            .base_15_0 = 0x0000,
+            .base_23_16 = 0x00,
+            .type = DESC_TYPE_READ_WRITE,
+            .s = DESC_CODE_DATA,
+            .dpl = MAX_PRIVILEGE,
+            .p = 0x00,
+            .limit_19_16 = 0x3,
+            .avl = 0x1,
+            .l = 0x0,
+            .db = 0x1,
+            .g = 0x1,
+            .base_31_24 = 0x00,
+        },
+    [GDT_IDX_DATA_3]=
+        {
+            .limit_15_0 = 0x3000,
+            .base_15_0 = 0x0000,
+            .base_23_16 = 0x00,
+            .type = DESC_TYPE_READ_WRITE,
+            .s = DESC_CODE_DATA,
+            .dpl = MIN_PRIVILEGE,
+            .p = 0x00,
+            .limit_19_16 = 0x3,
+            .avl = 0x1,
+            .l = 0x0,
+            .db = 0x1,
+            .g = 0x1,
+            .base_31_24 = 0x00,
+        }
 };
 
 // Aca hay una inicializacion estatica de una structura que tiene su primer componente el tamano 
 // y en la segunda, la direccion de memoria de la GDT. Observen la notacion que usa. 
-gdt_descriptor_t GDT_DESC = {sizeof(gdt) - 1, (uint32_t)&gdt};
+gdt_descriptor_t GDT_DESC = {sizeof(gdt) - 1,(uint32_t)&gdt};

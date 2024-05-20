@@ -4,11 +4,15 @@
 ; ==============================================================================
 
 %include "print.mac"
+%define C_FG_LIGHT_CYAN  (0xB)
 
 global start
 
 
 ; COMPLETAR - Agreguen declaraciones extern según vayan necesitando
+extern A20_enable
+extern A20_disable
+extern GDT_DESC
 
 ; COMPLETAR - Definan correctamente estas constantes cuando las necesiten
 ;%define CS_RING_0_SEL ??   
@@ -36,7 +40,7 @@ start_pm_len equ    $ - start_pm_msg
 BITS 16
 start:
     ; COMPLETAR - Deshabilitar interrupciones
-
+    cli
 
     ; Cambiar modo de video a 80 X 50
     mov ax, 0003h
@@ -48,11 +52,14 @@ start:
     ; COMPLETAR - Imprimir mensaje de bienvenida - MODO REAL
     ; (revisar las funciones definidas en print.mac y los mensajes se encuentran en la
     ; sección de datos)
+    print_text_rm start_rm_msg,start_rm_len,C_FG_LIGHT_CYAN,0x00,0x00
 
     ; COMPLETAR - Habilitar A20
     ; (revisar las funciones definidas en a20.asm)
+    call A20_enable
 
     ; COMPLETAR - Cargar la GDT
+    lgdt [GDT_DESC]
 
     ; COMPLETAR - Setear el bit PE del registro CR0
 

@@ -1,0 +1,25 @@
+*******RESPUESTAS********
+1. En modo real del x86, tenemos el entorno de programacion del intel 8086 de 16 bits , con pocas extensiones, tal como poder switchear a modo protegido.
+    En cambio , modo protegido es el modo natural/por default del procesador; el cual provee un conjunto de caracteristicas de la arq. , flexibilidad , mayor performance y compatibilidad para programas existentes.
+
+2. Primero el modo real opera en 16 bits , tenemos 1mb de memoria direccinable. Ademas , al no haber proteccion alguna estamos condicionados a que nuestro cosigo/datos en memoria sean corrompidos por otros procesos , etc.
+
+3.  *La GDT, aka Global Descriptor Table, es un arreglo contiguo de descriptores de segmento , la cual es varible en longitud  y puede tener hasta  8192 (2^13) descriptores de 8 bytes.    
+    * Cada descriptor de segmento se compone de 8bytes en donde , en los 4bytes bajos hay 2 bytes para la parte baja del 'base adress' y los 16 bits bajos del campo 'limite' (que especifica el limite del segmento).Las otros bits de las respectivas partes altas estan en los 4 bytes altos, junto a una serie de bits especiales para atributos de este:
+        **G -> indica la granularidad/escala del atributo limite, Si esta seteado, el limite se interpreta en unidades de 4k-bytes.CC en bytes.
+        **P -> indica si el segmento esta presente o no en memoria . Si intentamos cargar en un registro de segmento el selector a este descriptor , salta una 'segment-not-present' exception
+        **DPL(2bits)-> especifica el nivel de privilegio del segmento , va desde 0 hasta 3 en orden.
+        **S -> indica si el descriptor de segmento es para un segmento del sistema si esta seteada en 0 . Si seteada en 1 , el segmento es para codigo o datos
+
+4.Tenemos varias opciones de acuerdo a si queremos un segmento con nivel de privilegio ajustable (bit C= "conforming"). La flag A siempre se setea  cuando una direccion del segmento es accedida.Claramente el bit_11 esta seteado en 0 para definir que es segmento de codigo.
+            C R A
+            0 1 0
+            0 1 1   
+            1 1 1 
+            1 1 0
+
+6.  *La variable gdt_entry_t gdt[] contiene la GDT , representada como un array de descriptores.
+    *La variable gdt_descriptor_t GDT_DESC contiene al GDT_Register , registro de 48 bits que indica en que direccin comienza la GDT y su tamano.
+
+10. *La instruccion LGDT carga el operando src de 48bits/6bytes en el registro de la GDT, el cual especifica el base address de esta en los 4 bytes mas altos y su limite (#bytes que ocupa la tabla) en los 2 mas bajos.
+    *Esta informacion esta en gdt_descriptor_t ; la cual se inicializa en gdt.c con el nombre GDT_DESC.
