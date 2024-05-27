@@ -70,4 +70,30 @@ void screen_draw_box(uint32_t fInit, uint32_t cInit, uint32_t fSize,
 }
 
 void screen_draw_layout(void) {
+  ca(*p)[VIDEO_COLS] = (ca(*)[VIDEO_COLS])VIDEO;
+  uint8_t attr=(C_FG_WHITE|C_BG_CYAN);
+
+  char msg[]="Larreta y jorge macri se la re comen";
+
+  uint32_t f;
+  uint32_t c;
+  //Limpiamos pantalla
+   for (f = 0; f < VIDEO_FILS; f++) {
+    for (c = 0; c < VIDEO_COLS; c++) {
+      p[f][c].c = '\0';
+      p[f][c].a = (C_BG_BLUE|C_FG_WHITE);
+    }
+  }
+
+  //Printeamos msg en fila 25
+  f=25;
+  c=20;
+  uint8_t i=0;
+  while (msg[i]!='\0'){
+    p[f][c].c=msg[i];
+    p[f][c].a=attr;
+    i++;
+    c++;
+  }
+
 }

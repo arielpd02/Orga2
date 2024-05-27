@@ -29,3 +29,10 @@
 
 15. *El formato adecuado para el jump far es <Segment>+<Absolute Address> ; se pasa a un segmento de codigo del mismo nivel de privilegio que el actual.
     *Como selector de segmento uso una macro con el indice desplazado, bit TIL:=0 y RPL:=00.
+
+20. *Como el area de pantalla es un array de 50*80 celdas tq cada una ocupa 2 bytes -> en total el segmento de video tiene un espacio direccionable de 8000 bytes.
+    *La base es el address 0x000B8000 , ya que ahi comienza el buffer de video.
+
+21. * screen_draw_box() dibuja una caja en la pantalla a partir de la fila 1 del tamano y posicion especificado por los parametros.Accede a la pantalla con la direccion de VIDEO que referencia el incio del buffer de video , casteada a ca_s , estructura que representa un caracter con su color/atributos.
+    * ca_s ocupa 2 bytes en memoria.
+

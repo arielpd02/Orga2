@@ -6,6 +6,7 @@
 %include "print.mac"
 %define C_FG_LIGHT_CYAN  0xb
 %define C_FG_LIGHT_GREEN  0xa
+%define BORDER (0x0<<4|0x2)
 
 global start
 
@@ -15,13 +16,14 @@ global start
 ;Extern code
 extern A20_enable
 extern A20_disable
-
+extern screen_draw_layout
+extern screen_draw_box
 ;Extern data
 extern GDT_DESC
 
 ; COMPLETAR - Definan correctamente estas constantes cuando las necesiten
-%define CS_RING_0_SEL  0x1000     
-%define DS_RING_0_SEL  0x3000       
+%define CS_RING_0_SEL  0b0000000001000     
+%define DS_RING_0_SEL  0b0000000011000           
 
 %define STACK_BASE 0x25000
 
@@ -38,7 +40,7 @@ start_rm_len equ    $ - start_rm_msg
 
 start_pm_msg db     'Iniciando kernel en Modo Protegido'
 start_pm_len equ    $ - start_pm_msg
-
+eq: db '='
 ;;
 ;; Seccion de código.
 ;; -------------------------------------------------------------------------- ;;
@@ -71,7 +73,7 @@ start:
 
     ; COMPLETAR - Setear el bit PE del registro CR0
     mov eax,cr0
-    or eax,1
+    or eax,0x00000001
     mov cr0,eax
 
     ; COMPLETAR - Saltar a modo protegido (far jump)
@@ -96,10 +98,33 @@ modo_protegido:
     mov esp,STACK_BASE
 
     ; COMPLETAR - Imprimir mensaje de bienvenida - MODO PROTEGIDO
-    print_text_pm start_pm_msg,start_pm_len,C_FG_LIGHT_GREEN,0,0
+    print_text_pm start_pm_msg,start_pm_len,C_FG_LIGHT_GREEN,0x00,0x00
     ; COMPLETAR - Inicializar pantalla
+    call screen_draw_layout
     
-   
+    
+    xor eax,eax
+    mov edx,BORDER
+    push edx
+    xor eax,eax
+    mov edx,[eq]
+    push edx
+    mov edx,40
+    push edx
+    mov edx,40
+    push edx
+    mov edx,0
+    push edx
+    mov edx,0
+    push edx
+    ;call screen_draw_box
+    pop eax
+    pop eax
+    pop eax
+    pop eax
+    pop eax
+    pop eax
+
     ; Ciclar infinitamente 
     mov eax, 0xFFFF
     mov ebx, 0xFFFF

@@ -40,9 +40,9 @@
  * Definirlos a partir de los índices de la GDT, definidos más arriba 
  * Hint: usar operadores "<<" y "|" (shift y or) */
 
-#define GDT_CODE_0_SEL (GDT_IDX_CODE_0<<3)|000
+#define GDT_CODE_0_SEL (GDT_IDX_CODE_0<<3)
 #define GDT_DATA_0_SEL (GDT_IDX_CODE_3<<3)|011
-#define GDT_CODE_3_SEL (GDT_IDX_DATA_0<<3)|000
+#define GDT_CODE_3_SEL (GDT_IDX_DATA_0<<3)
 #define GDT_DATA_3_SEL (GDT_IDX_DATA_3<<3)|011
 
 
@@ -66,12 +66,12 @@
 #define DESC_TYPE_EXECUTE_READ 0xa
 #define DESC_TYPE_READ_WRITE   0x2
 
-#define MAX_PRIVILEGE 0x00
-#define MIN_PRIVILEGE 0x03
+#define MAX_PRIVILEGE 0x0
+#define MIN_PRIVILEGE 0x3
 
 /* COMPLETAR - Tamaños de segmentos */ 
-#define FLAT_SEGM_SIZE   0x33001 // 817 MiB
-#define VIDEO_SEGM_SIZE  ??
+#define FLAT_SEGM_SIZE   (817<<20) // 817 MiB
+#define VIDEO_SEGM_SIZE  8000
 
 
 /* Direcciones de memoria */
