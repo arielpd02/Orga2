@@ -72,11 +72,11 @@ temperature_asm:
 
 .ciclo:
 
-    pmovzxbw xmm0,[rdi]     ; Bajo 2px a reg extendidos con zero como qw-packed data (C/componente ocupa 1 word)
+    pmovzxbw xmm0,qword [rdi]     ; Bajo 2px a reg extendidos con zero como qw-packed data (C/componente ocupa 1 word)
     movdqu xmm1,xmm0        ; Copio en xmm1  
 
     ; calc_t toma como parametro al xmm0 := A R G B (1) | A R G B (0)
-    call calc_t
+    call calc_t_aux
     ; Devuelve xmm0:= | t1 | t1 | t1 | t1 | t0 | t0 | t0 | t0 
     ; Trabajo cada ti como si fuera una componente propia del pixel i / al final tengo los pixeles ya procesados
     ; Voy a ir acumulando resultados , pisando si ti no cumple cierta condicion 
@@ -95,8 +95,8 @@ temperature_asm:
     pop rbp
     ret
 
-
-
+; el cmpGT es dst >? src : 1s si se cumple, 0s sino.
+; pandn -> ¬dst AND src
 
 pintar:
     ;Prologo
@@ -104,125 +104,123 @@ pintar:
     mov rbp,rsp
 
     ; Mi resultado final lo construyo en xmm11
-    pxor xmm11,xmm1
+    pxor xmm11,xmm11
 
     ;Copio el valor original de t0 y t1
-    movdqu xmm5,xmm0
+    movdqu xmm5,xmm0    ; xmm5:= t1 | t1 | t1 | t1 | t0 | t0 | t0 | t0 
 
-.lessthan_32:
-    movdqu xmm2,xmm0
-    pcmpgtw xmm2,xmm12              ; Si habia 1s, alguno es mayor , voy a la proxima "guarda"
-    pxor xmm2,xmm4                  ; XOR me wipea 1s -> luego testeo con PTEST
-    ptest xmm2,xmm2                 ; Setea el ZF en 1 si xmmx==0 al hacer un AND / dst remains unchanged
-    jz .between_96_32               ; IF eran 0s -> ninguno cumplia ser menor y sigo
+    .less_than_32:
 
-    movdqu xmm7,xmm2                ; Guardo la mask obtenida para luego comparar "cual px cumple"
+    movdqu xmm2,xmm5
+    pcmpgtw xmm2,xmm12   ; xmm2:= 1 | 1 | 1 | 1 | 0 | 0 | 0 | 0 si t1 no cumple y t0 si (i.e) . Mask de la comparacion
 
-    movdqu xmm1,[lt_32_mul]         ; X convencion de llamada
-    call multiplicar                ; Multiplico componentes debidas , res en xmm0
-    movdqu xmm2,[lt_32_sum]
-    paddw xmm0,xmm2                 ; Sumo en componentes debidas
+    ; Aplico mascaras de t<32
+    movdqu xmm1,[lt_32_mul]        ; xmm1: tiene mask para multiplicar por 4 la componente B
+    call multiply                  ; xmm0: 0 | 0 | 0 | t1*4 | 0 | 0 | 0 | t0*4
+    paddw xmm0,[lt_32_sum]         ; xmm0: 255 | 0 | 0 |128 + t1*4 | 255 | 0 | 0 | 128 + t0*4
 
-    pand xmm0,xmm7                  ; El AND me preserva el calculo sii el t_px cumplia
-    por xmm11,xmm0                  ; Cargo el res parcial en xmm11
+    ;¿Que pixel cumple? -> aplico xmm2
+    pandn xmm2,xmm0
+    por xmm11,xmm2                ; xmm2 :=  0 | 0 | 0 | 0 | 255 | 0 | 0 |128 + t1*4  si t1  no cumple y t0 si.
 
-.between_96_32:
-    movdqu xmm0,xmm5
-    movdqu xmm1,xmm12   
-    movdqu xmm2,xmm13               ; X convencion
 
-    call between
-    ; Chequeo si ninguno cumple
-    movdqu xmm2,xmm0
-    ptest xmm2,xmm2
-    jz .between_96_160              ; Si era todo 0 , ninguno cumple, voy a guarda siguiente
+    .btw_32_96:
 
-    movdqu xmm7,xmm2                ; Guardo mask
-    movdqu xmm0,xmm5                ; Devuelvo t original
+    movdqu xmm0,xmm5                ; Recupero valor de t
 
-    ; Resto a t -> multiplico -> sumo
-    movdqu xmm2,[btw_96_160_dif]
-    psubw xmm0,xmm2
+    ;Comparo ti<96 y ti>=32
+
+    movdqu xmm2,xmm5
+    movdqu xmm3,xmm5
+    pcmpgtw xmm2,xmm12            ; xmm2 tiene 1s si t>=32
+    pcmpgtw xmm3,xmm13            ; xmm3 tiene 1s si t>=96
+    pandn xmm3,xmm2               ; xmm3 tiene 1s <=> t>=32 and t<96
+
+
+    ; Aplico mascaras de  32<=t<96
+
+    psubw xmm0,[btw_32_96_dif]  ; xmm0: 0 | t1-32 | 0 | 0 | 0 | t0-32 | 0 | 0
+    movdqu xmm1,[btw_32_96_mul]
+    call multiply               ; xmm0 : 0 | 0 | t1-32 *4 | 0 | 0 | 0 | t0-32 * 4 | 0 
+    paddw xmm0,[btw_32_96_sum]
+
+    ; Filtro px que no cumpla
+
+    pand xmm3,xmm0
+    por xmm11,xmm3              ; xmm3 := 255 | 0 | t1-32 *4 | 255 | 0 | 0 | 0 | 0  si t1 cumple y t0 no (i.e)
+
+    .btw_96_160:
+
+    movdqu xmm0,xmm5                ; Recupero valor de t
+
+    ;Comparo ti<160 y ti>=96
+
+    movdqu xmm2,xmm5
+    movdqu xmm3,xmm5
+    pcmpgtw xmm2,xmm13            ; xmm2 tiene 1s si t>=96
+    pcmpgtw xmm3,xmm14            ; xmm3 tiene 1s si t>=160
+    pandn xmm3,xmm2               ; xmm3 tiene 1s <=> t>=96 and t<160
+
+
+    ; Aplico mascaras de  96<=t<160
+
+    psubw xmm0,[btw_96_160_dif]  ; xmm0: 0 | t1-96 | 0 | t1-96 | 0 | t0-96 | 0 | t0-96
     movdqu xmm1,[btw_96_160_mul]
-    call multiplicar
-    movdqu xmm2,[btw_96_160_sum]
+    call multiply               ; xmm0 : 0 | t1-96 * 4 | 0 | (t1-96) * -4 | 0 | t0-96 * 4 | 0 | (t0-96) *-4
     paddw xmm0,[btw_96_160_sum]
 
-    pand xmm0,xmm7
-    por xmm11,xmm0
+    ; Filtro px que no cumpla
+
+    pand xmm3,xmm0
+    por xmm11,xmm3              ; xmm3 :=  255 | t1-96 * 4 | 255 | 255 + (t1-96) * -4 | 0 | 0 | 0 | 0  si t1 cumple y t0 no (i.e)
+
+    .btw_160_224:
+
+    movdqu xmm0,xmm5                ; Recupero valor de t
+
+    ;Comparo ti<224 y ti>=160
+
+    movdqu xmm2,xmm5
+    movdqu xmm3,xmm5
+    pcmpgtw xmm2,xmm14            ; xmm2 tiene 1s si t>=160
+    pcmpgtw xmm3,xmm15            ; xmm3 tiene 1s si t>=224
+    pandn xmm3,xmm2               ; xmm3 tiene 1s <=> t>=160 and t<224
 
 
-.between_96_160:
+    ; Aplico mascaras de  160<=t<224
+
+    psubw xmm0,[btw_96_160_dif]     ; xmm0: 0 | 0 | t1-160 | 0 | 0 | 0 | t0-160 | 0 
+    movdqu xmm1,[btw_96_160_mul]
+    call multiply                   ; xmm0 : 0 | 0 | (t1-160) *- 4  | 0 | 0 | 0 | (t0-160) * -4 | 0 
+    paddw xmm0,[btw_96_160_sum]
+
+    ; Filtro px que no cumpla
+
+    pand xmm3,xmm0
+    por xmm11,xmm3                   ; xmm3 :=  255 | 255 |255 + (t1-160) * -4  | 0 | 0 | 0 | 0 | 0 si t1 cumple y t0 no
+
+    .geqt_224:
+
     movdqu xmm0,xmm5
-    movdqu xmm1,xmm13
-    movdqu xmm2,xmm14
 
-    call between
-    ;Chequeo si ninguno cumple
-    movdqu xmm2,xmm0
-    ptest xmm2,xmm2
-    jz .between_160_224
+    ; Comparo t1>=224
 
-    movdqu xmm7,xmm2                ; Guardo mask
-    movdqu xmm0,xmm5                ; Devuelvo t original
+    movdqu xmm2,xmm5
+    pcmpgtw xmm2,xmm15            ; xmm2 tiene 1s <=> t>=224
 
-    ; Resto a t -> multiplico -> sumo
-    movdqu xmm2,[btw_160_224_dif]
-    psubw xmm0,xmm2
-    movdqu xmm1,[btw_160_224_mul]
-    call multiplicar
-    movdqu xmm2,[btw_96_160_sum]
-    paddw xmm0,xmm2
+    ; Aplico mascara de t>=224
 
-    pand xmm0,xmm7
-    por xmm11,xmm0
-
-.between_160_224:
-    movdqu xmm0,xmm5
-    movdqu xmm1,xmm14
-    movdqu xmm2,xmm15
-
-    call between
-    ;Chequeo si ninguno cumple
-    movdqu xmm2,xmm0
-    ptest xmm2,xmm2
-    jz .greaterthan_224
-
-    movdqu xmm7,xmm2                ; Guardo mask
-    movdqu xmm0,xmm5                ; Restauro t
-
-    ; Resto a t -> multiplico -> sumo
-    movdqu xmm2,[btw_160_224_dif]
-    psubw xmm0,xmm2
-    movdqu xmm1,[btw_160_224_mul]
-    call multiplicar
-    movdqu xmm2,[btw_160_224_sum]
-    paddw xmm0,xmm2
-
-    pand xmm0,xmm7
-    por xmm11,xmm0
-
-.greaterthan_224:
-    movdqu xmm0,xmm5
-    ;Chequeo si ninguno cumple
-    pcmpgtw xmm0,xmm15              ; t>223?
-    ptest xmm0,xmm0
-    jz .end             
-
-    movdqu xmm7,xmm0                ; Guardo mask
-    movdqu xmm0,xmm5               ; Restauro t
-
-    ;Resto a t -> multiplico -> sumo
-    movdqu xmm2,[geqt_224_dif]
-    psubw xmm0,xmm2
+    psubw xmm0,[geqt_224_dif]     ; xmm0: 0 | t1-224 | 0 | 0 | 0 | t0-224 | 0 | 0 
     movdqu xmm1,[geqt_224_mul]
-    call multiplicar
-    movdqu xmm2,[geqt_224_sum]
+    call multiply                 ; xmm0: 0 | (t1-224) * -4 | 0 | 0 | 0 | (t0-224) * -4 | 0 | 0 
     paddw xmm0,[geqt_224_sum]
 
-    pand xmm0,xmm7
-    por xmm11,xmm0
+    ;Filtro px que no cumpla
 
+    pand xmm2,xmm0
+    por xmm11,xmm2                ; xmm3:=  255 | 255 + (t1-224) * -4 | 0 | 0 | 0 | 0 | 0 | 0  , si t1 cumple y t0 no
+
+    
 .end:
     movdqu xmm0,xmm11
     ;Epilogo
@@ -231,55 +229,39 @@ pintar:
 
 
 
-; xmm0= t1|t1|...|t0|t0 
-; xmm1: lower_mask
-; xmm2: upper_mask
-between:
-    ;Prologo 
-    push rbp
-    mov rbp,rsp
-
-    movdqu xmm7,xmm0
-    pcmpgtw xmm0,xmm1   ; t>lower?
-    pcmpgtw xmm7,xmm2   ; t>upper?
-
-    pandn xmm7,xmm0     ; t>lower && t<=upper-1?
-    movdqu xmm0,xmm7
-
-    ;Epilogo
-    pop rbp
-    ret
-
-
 
 
 ; xmm0:= t1 | t1 | t1 | t1 | t0 | t0 | t0 | t0 
 ; xmm1:= mask_mul
-multiplicar:
-    ;Prologo
+multiply:
+    ; Multiplies 8 words in xmm0 by 8 words in xmm1
+    ; Returning 8 words in xmm0. The multiplications
+    ; involved are such that, when it's relevant to do
+    ; them, we are not losing precision, whereas the
+    ; other pixel will contain rubbish that is going
+    ; to be filtered out.
     push rbp
-    mov rbp,rsp
+    mov rbp, rsp
 
-    movdqu xmm8,xmm0
-    pmulhw xmm8,xmm1        ; La parte alta del producto en xmm8
-    pmullw xmm0,xmm1        ; La parte baja del producto en xmm0
-    movdqu xmm1,xmm0        ; Copio en xmm1 para hacer el unpack
+    movdqu xmm9, xmm0
+    pmulhw xmm9, xmm1
+    pmullw xmm0, xmm1
+    movdqu xmm1, xmm0
 
-    punpcklwd xmm0,xmm8     ; xmm0:= 00000000| 00000000 | 00000000 | t0*4
-    punpckhwd xmm1,xmm8     ; xmm1:= 00000000| 00000000 | 00000000 | t1*4
+    punpckhwd xmm0, xmm9
+    punpcklwd xmm1, xmm9
 
-    pextrw rax,xmm1,0
-    pinsrw xmm0,rax,4       ; xmm0:= 0000 | 0000| 0000 | t1*4 | 0000 | 0000 | 0000 | t0*4
+    packssdw xmm1, xmm0
+    movdqu xmm0, xmm1
 
-
-    ;Epilogo
     pop rbp
     ret
+
+
 calc_t_aux:
     push rbp
     mov rbp, rsp
-    movdqu xmm2,[divisor]
-    cvtpi2pd xmm2,mm2
+    cvtpi2pd xmm2,[divisor]
 
     ; Sum in 16 bits because 255 * 3 wouldn't fit in 8 bits
     movdqu xmm7,[a_mask]
@@ -312,12 +294,12 @@ calc_t:     ;Funca!!
     pxor xmm3,xmm3
     pxor xmm7,xmm7
     pxor xmm2,xmm2
-    cvtpi2ps xmm6,mm6      ; Convierto el divisor en float
+    cvtdq2ps xmm6,xmm6      ; Convierto el divisor en float
 
     ; Borramos A de c/pixel
-    xor rax,rax
-    pinsrw xmm0,rax,3
-    pinsrw xmm0,rax,7
+    movdqu xmm2,[a_mask]
+    pand xmm0,xmm2
+
 
     ; Suma horizontal
     phaddw xmm0,xmm0
@@ -327,7 +309,7 @@ calc_t:     ;Funca!!
     pmovzxwd xmm0,xmm0
 
     ;Falta dividir por 3 -> tengo que convertir a float , dividir y luego truncar... Solo puedo operar con dwords
-    cvtpi2ps xmm0,mm0      ; Los convierto en Sp floats
+    cvtdq2ps xmm0,xmm0      ; Los convierto en Sp floats
     divps xmm0,xmm6         ; Divido c/suma
     cvttps2dq xmm0,xmm0     ; Trunco el resultado -> TODO
     ; xmm0:= ? | ? | sum1/3 | sum0/3
