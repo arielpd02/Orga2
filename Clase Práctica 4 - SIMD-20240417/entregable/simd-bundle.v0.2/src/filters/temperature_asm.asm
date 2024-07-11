@@ -1,5 +1,7 @@
 global temperature_asm
 
+;Ya varie el orden de los factores , probe con double/single y es indiferente.
+;   -La logica de casos tendría que ser el error , no lo encuentro.
 
 section .rodata:
     a_mask: dw 0xffff, 0xffff, 0xffff, 0x0000, 0xffff, 0xffff, 0xffff, 0x0000
@@ -68,15 +70,16 @@ temperature_asm:
     shr rax,1               ; rax:width/2 -> #iteraciones por fila
     mul rcx         
     mov rcx,rax             ; rcx: #iteraciones en total
-
+    
 
 .ciclo:
 
     pmovzxbw xmm0,qword [rdi]     ; Bajo 2px a reg extendidos con zero como qw-packed data (C/componente ocupa 1 word)
-    movdqu xmm1,xmm0        ; Copio en xmm1  
+    movdqu xmm1,xmm0              ; Copio en xmm1  
 
     ; calc_t toma como parametro al xmm0 := A R G B (1) | A R G B (0)
     call calc_t_aux
+
     ; Devuelve xmm0:= | t1 | t1 | t1 | t1 | t0 | t0 | t0 | t0 
     ; Trabajo cada ti como si fuera una componente propia del pixel i / al final tengo los pixeles ya procesados
     ; Voy a ir acumulando resultados , pisando si ti no cumple cierta condicion 
@@ -95,6 +98,9 @@ temperature_asm:
     pop rbp
     ret
 
+
+
+
 ; el cmpGT es dst >? src : 1s si se cumple, 0s sino.
 ; pandn -> ¬dst AND src
 
@@ -103,7 +109,8 @@ pintar:
     push rbp
     mov rbp,rsp
 
-    ; Mi resultado final lo construyo en xmm11
+    ; Mi resultado final lo construyo en xmm11.
+    pxor xmm10,xmm10
     pxor xmm11,xmm11
 
     ;Copio el valor original de t0 y t1
@@ -112,16 +119,18 @@ pintar:
     .less_than_32:
 
     movdqu xmm2,xmm5
-    pcmpgtw xmm2,xmm12   ; xmm2:= 1 | 1 | 1 | 1 | 0 | 0 | 0 | 0 si t1 no cumple y t0 si (i.e) . Mask de la comparacion
+    pcmpgtw xmm2,xmm12  ; t >= 32 ? 1 : 0
+    pxor xmm2,xmm4      ; xmm2:= 1 | 1 | 1 | 1 | 0 | 0 | 0 | 0 si t1 cumple y t0 no (i.e) . Mask de la comparacion t<32
 
     ; Aplico mascaras de t<32
     movdqu xmm1,[lt_32_mul]        ; xmm1: tiene mask para multiplicar por 4 la componente B
     call multiply                  ; xmm0: 0 | 0 | 0 | t1*4 | 0 | 0 | 0 | t0*4
-    paddw xmm0,[lt_32_sum]         ; xmm0: 255 | 0 | 0 |128 + t1*4 | 255 | 0 | 0 | 128 + t0*4
+    movdqu xmm1,[lt_32_sum]
+    paddw xmm0,xmm1                ; xmm0: 255 | 0 | 0 |128 + t1*4 | 255 | 0 | 0 | 128 + t0*4
 
     ;¿Que pixel cumple? -> aplico xmm2
-    pandn xmm2,xmm0
-    por xmm11,xmm2                ; xmm2 :=  0 | 0 | 0 | 0 | 255 | 0 | 0 |128 + t1*4  si t1  no cumple y t0 si.
+    pand xmm2,xmm0
+    por xmm11,xmm2                 ; xmm2 :=  0 | 0 | 0 | 0 | 255 | 0 | 0 |128 + t1*4  si t1  no cumple y t0 si.
 
 
     .btw_32_96:
@@ -138,16 +147,17 @@ pintar:
 
 
     ; Aplico mascaras de  32<=t<96
-
-    psubw xmm0,[btw_32_96_dif]  ; xmm0: 0 | t1-32 | 0 | 0 | 0 | t0-32 | 0 | 0
+    movdqu xmm1,[btw_32_96_dif]
+    psubw xmm0,xmm1               ; xmm0: 0 | t1-32 | 0 | 0 | 0 | t0-32 | 0 | 0
     movdqu xmm1,[btw_32_96_mul]
-    call multiply               ; xmm0 : 0 | 0 | t1-32 *4 | 0 | 0 | 0 | t0-32 * 4 | 0 
-    paddw xmm0,[btw_32_96_sum]
+    call multiply                 ; xmm0 : 0 | 0 | t1-32 *4 | 0 | 0 | 0 | t0-32 * 4 | 0 
+    movdqu xmm1,[btw_32_96_sum]
+    paddw xmm0,xmm1
 
     ; Filtro px que no cumpla
 
-    pand xmm3,xmm0
-    por xmm11,xmm3              ; xmm3 := 255 | 0 | t1-32 *4 | 255 | 0 | 0 | 0 | 0  si t1 cumple y t0 no (i.e)
+    pand xmm0,xmm3
+    por xmm11,xmm0                  ; xmm0 := 255 | 0 | t1-32 *4 | 255 | 0 | 0 | 0 | 0  si t1 cumple y t0 no (i.e)
 
     .btw_96_160:
 
@@ -164,15 +174,17 @@ pintar:
 
     ; Aplico mascaras de  96<=t<160
 
-    psubw xmm0,[btw_96_160_dif]  ; xmm0: 0 | t1-96 | 0 | t1-96 | 0 | t0-96 | 0 | t0-96
+    movdqu xmm1,[btw_96_160_dif]
+    psubw xmm0,xmm1                 ; xmm0: t1 | t1-96 | t1 | t1-96 | t0 | t0-96 | t0 | t0-96
     movdqu xmm1,[btw_96_160_mul]
-    call multiply               ; xmm0 : 0 | t1-96 * 4 | 0 | (t1-96) * -4 | 0 | t0-96 * 4 | 0 | (t0-96) *-4
-    paddw xmm0,[btw_96_160_sum]
+    call multiply                   ; xmm0 : 0 | t1-96 * 4 | 0 | (t1-96) * -4 | 0 | t0-96 * 4 | 0 | (t0-96) *-4
+    movdqu xmm1,[btw_96_160_sum]
+    paddw xmm0,xmm1
 
     ; Filtro px que no cumpla
 
-    pand xmm3,xmm0
-    por xmm11,xmm3              ; xmm3 :=  255 | t1-96 * 4 | 255 | 255 + (t1-96) * -4 | 0 | 0 | 0 | 0  si t1 cumple y t0 no (i.e)
+    pand xmm0,xmm3
+    por xmm11,xmm0                  ; xmm0 :=  255 | t1-96 * 4 | 255 | 255 + (t1-96) * -4 | 0 | 0 | 0 | 0  si t1 cumple y t0 no (i.e)
 
     .btw_160_224:
 
@@ -189,15 +201,17 @@ pintar:
 
     ; Aplico mascaras de  160<=t<224
 
-    psubw xmm0,[btw_96_160_dif]     ; xmm0: 0 | 0 | t1-160 | 0 | 0 | 0 | t0-160 | 0 
-    movdqu xmm1,[btw_96_160_mul]
+    movdqu xmm1,[btw_160_224_dif]
+    psubw xmm0,xmm1                 ; xmm0: 0 | 0 | t1-160 | 0 | 0 | 0 | t0-160 | 0 
+    movdqu xmm1,[btw_160_224_mul]
     call multiply                   ; xmm0 : 0 | 0 | (t1-160) *- 4  | 0 | 0 | 0 | (t0-160) * -4 | 0 
-    paddw xmm0,[btw_96_160_sum]
+    movdqu xmm1,[btw_160_224_sum]
+    paddw xmm0,xmm1
 
     ; Filtro px que no cumpla
 
-    pand xmm3,xmm0
-    por xmm11,xmm3                   ; xmm3 :=  255 | 255 |255 + (t1-160) * -4  | 0 | 0 | 0 | 0 | 0 si t1 cumple y t0 no
+    pand xmm0,xmm3
+    por xmm11,xmm0                   ; xmm0 :=  255 | 255 |255 + (t1-160) * -4  | 0 | 0 | 0 | 0 | 0 si t1 cumple y t0 no
 
     .geqt_224:
 
@@ -210,18 +224,21 @@ pintar:
 
     ; Aplico mascara de t>=224
 
-    psubw xmm0,[geqt_224_dif]     ; xmm0: 0 | t1-224 | 0 | 0 | 0 | t0-224 | 0 | 0 
+    movdqu xmm1,[geqt_224_dif]
+    psubw xmm0,xmm1               ; xmm0: 0 | t1-224 | 0 | 0 | 0 | t0-224 | 0 | 0 
     movdqu xmm1,[geqt_224_mul]
     call multiply                 ; xmm0: 0 | (t1-224) * -4 | 0 | 0 | 0 | (t0-224) * -4 | 0 | 0 
-    paddw xmm0,[geqt_224_sum]
+    movdqu xmm1,[geqt_224_sum]
+    paddw xmm0,xmm1
 
     ;Filtro px que no cumpla
 
-    pand xmm2,xmm0
-    por xmm11,xmm2                ; xmm3:=  255 | 255 + (t1-224) * -4 | 0 | 0 | 0 | 0 | 0 | 0  , si t1 cumple y t0 no
+    pand xmm0,xmm2
+    por xmm11,xmm0                ; xmm0:=  255 | 255 + (t1-224) * -4 | 0 | 0 | 0 | 0 | 0 | 0  , si t1 cumple y t0 no
 
     
 .end:
+
     movdqu xmm0,xmm11
     ;Epilogo
     pop rbp
@@ -242,7 +259,7 @@ multiply:
     ; to be filtered out.
     push rbp
     mov rbp, rsp
-
+    
     movdqu xmm9, xmm0
     pmulhw xmm9, xmm1
     pmullw xmm0, xmm1
@@ -257,11 +274,12 @@ multiply:
     pop rbp
     ret
 
-
+;Modifico que sea con ps y no con double
 calc_t_aux:
     push rbp
     mov rbp, rsp
-    cvtpi2pd xmm2,[divisor]
+    movdqu xmm7,[divisor]
+    cvtdq2ps xmm2,xmm7
 
     ; Sum in 16 bits because 255 * 3 wouldn't fit in 8 bits
     movdqu xmm7,[a_mask]
@@ -272,9 +290,9 @@ calc_t_aux:
     movdqu xmm7,[c_mask]
     pand xmm0, xmm7    ; | t1 | 0 | t2 | 0 | 0 | 0 | 0 | 0 |
 
-    cvtdq2pd xmm0, xmm0    ; Convert dword ints to double
-    divpd xmm0, xmm2       ; Packed double division
-    cvttpd2dq xmm0, xmm0   ; Convert packed doubles to dword ints with truncation
+    cvtdq2ps xmm0, xmm0    ; Convert dword ints to single
+    divps xmm0, xmm2       ; Packed single division
+    cvttps2dq xmm0, xmm0   ; Convert packed singles to dword ints with truncation
     punpcklwd xmm0, xmm0   ; Broadcast result
     movdqu xmm2, xmm0
     psllq xmm2, 32
